@@ -13,7 +13,7 @@
       [ op   (first tree)
         tail (rest tree)
         args (map #(traverse fn-map %) tail)
-        fun  ((keyword op) fn-map)]
+        fun  ((keyword op) fn-map) ]
       (fun args))
     ((:value fn-map)  tree)))
 
@@ -23,13 +23,13 @@
   (set
    (traverse
     { :value #(if (symbol? %) [%] [])
-;      :power flatten
-;      :sqrt flatten
-;      :abs flatten
-      :+ flatten
-      :- flatten
-      :/ flatten
-      :* flatten }
+      :power flatten
+      :sqrt  flatten
+      :abs   flatten
+      :+     flatten
+      :-     flatten
+      :/     flatten
+      :*     flatten }
     code)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -54,16 +54,6 @@
 ;
 ;       Evaluate
 ;
-(defn let-vector
-  "Forms a vector for let statement"
-  [vars-map]
-  (into []
-    (mapcat
-      (fn
-        [[key value]]
-        [(symbol key) value])
-      vars-map)))
-
 (defn all-vars-defined?
   "Checks if all vars used in code are defined and vice versa"
   [vars code]
@@ -72,7 +62,16 @@
 (defn evaluate
   [vars code]
   (if (all-vars-defined? vars code)
-    (eval (conj () code (let-vector vars) 'let))
+    (traverse
+      { :value #(if (symbol? %) ((keyword %) vars) %)
+        :power #(power (first %) (second %))
+        :sqrt  #(sqrt (first %))
+        :abs   #(abs (first %))
+        :+     #(+ (first %) (second %))
+        :-     #(- (first %) (second %))
+        :/     #(/ (first %) (second %))
+        :*     #(* (first %) (second %)) }
+      code)
     (throw (new Exception "Need all vars defined, as well as no unused vars"))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -110,13 +109,32 @@
       (= a 0) 0
       :else (conj args '/))))
 
+(defn optimize-power [args]
+  (let [[a b] args]
+    (cond
+      (= a 0) 0
+      (= a 1) 1
+      (= b 0) 1
+      (= b 1) a
+      :else (conj args '/))))
+
+(defn optimize-sqrt [args]
+  (let [[a] args]
+    (cond
+      (= a 0) 0
+      (= a 1) 1
+      :else (conj args '/))))
+
 (defn optimize [list]
   (traverse
     { :value identity
-      :/ optimize-div
-      :* optimize-mul
-      :- optimize-sub
-      :+ optimize-add }
+      :power optimize-power
+      :sqrt  optimize-sqrt
+      :abs   #(conj % 'abs)
+      :/     optimize-div
+      :*     optimize-mul
+      :-     optimize-sub
+      :+     optimize-add }
     list))
 
 
@@ -125,7 +143,7 @@
 ;         To JavaScript
 ;
 (defn js-2-arity
-  "Convers 2 args operation into js syntax"
+  "Converts 2 args operation into js syntax"
   [operation args]
   (let
     [[a b] args]
@@ -135,10 +153,13 @@
   [code]
   (traverse
     { :value str
-      :+ #(js-2-arity "+" %)
-      :- #(js-2-arity "-" %)
-      :/ #(js-2-arity "/" %)
-      :* #(js-2-arity "*" %) }
+      :power #(str "Math.pow(" (first %) ", " (second %) ")")
+      :sqrt  #(str "Math.sqrt(" (first %) ")")
+      :abs   #(str "Math.abs(" (first %) ")")
+      :+     #(js-2-arity "+" %)
+      :-     #(js-2-arity "-" %)
+      :/     #(js-2-arity "/" %)
+      :*     #(js-2-arity "*" %) }
     code))
 
 (defn ->javascript
